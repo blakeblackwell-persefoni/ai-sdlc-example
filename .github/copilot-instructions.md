@@ -154,8 +154,10 @@ npm run deploy
 ```
 
 ### AI Agent Integration
-- Custom Claude commands in `.claude/commands/` provide specialized reviews
-- Node-focused agents: node-architect, node-tester, node-engineer-reviewer
+- Custom Claude commands provide specialized reviews:
+  - `/project:node-architect` - Reviews API design, TypeScript patterns, error handling, and module structure
+  - `/project:node-tester` - Generates comprehensive tests with Vitest patterns and HTTP handler tests
+  - `/project:node-engineer-reviewer` - Conducts thorough code review across quality, security, and performance
 - GitHub Actions workflow runs tests on PRs
 
 ## Code Quality Standards
