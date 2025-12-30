@@ -11,11 +11,11 @@ import (
 
 // Handler handles HTTP requests for the calculator service.
 type Handler struct {
-	calculator *service.Calculator
+	calculator service.CalculatorService
 }
 
 // NewHandler creates a new Handler with the given calculator service.
-func NewHandler(calc *service.Calculator) *Handler {
+func NewHandler(calc service.CalculatorService) *Handler {
 	return &Handler{calculator: calc}
 }
 
