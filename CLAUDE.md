@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an experimental **Agentic SDLC** repository—a microservices-based calculator API used as a testbed for exploring AI-driven software development workflows. The API provides basic arithmetic operations (add, subtract, multiply) with an OpenAPI specification.
+This is an experimental **Agentic SDLC** repository—a microservices-based calculator API used as a testbed for exploring AI-driven software development workflows. The API provides basic arithmetic operations (add, subtract, multiply) with an OpenAPI specification, built for Cloudflare Workers.
 
 ## Repository Structure
 
 ```
 .
 ├── services/
-│   └── calculator/           # Calculator microservice
-│       ├── cmd/server/       # Application entry point
-│       ├── internal/
-│       │   ├── handler/      # HTTP handlers
-│       │   ├── models/       # Request/response types
-│       │   └── service/      # Business logic
-│       ├── go.mod
+│   └── calculator/           # Calculator microservice (Cloudflare Workers)
+│       ├── src/
+│       │   ├── index.ts      # Worker entry point
+│       │   ├── routes/       # HTTP handlers
+│       │   ├── services/     # Business logic
+│       │   └── types/        # TypeScript interfaces
+│       ├── test/             # Vitest tests
+│       ├── wrangler.toml     # Cloudflare Workers config
+│       ├── package.json
 │       ├── openapi.yaml      # API contract
 │       └── README.md
 ├── scripts/agents/           # CI/CD automation agents
@@ -27,21 +29,25 @@ This is an experimental **Agentic SDLC** repository—a microservices-based calc
 ## Build and Run Commands
 
 ```bash
-# Run the calculator service
+# Install dependencies
 cd services/calculator
-go run cmd/server/main.go
+npm install
 
-# Build the binary
-go build -o calculator cmd/server/main.go
+# Start local development server (port 8787)
+npm run dev
 
 # Run tests
-go test ./... -v
+npm test
 
 # Run tests with coverage
-go test ./... -cover
-```
+npm run test:coverage
 
-The server starts on port 8080 with graceful shutdown support.
+# Type check
+npm run typecheck
+
+# Deploy to Cloudflare Workers
+npm run deploy
+```
 
 ## API Endpoints
 
@@ -53,25 +59,26 @@ All arithmetic operations accept POST requests with JSON body `{"a": number, "b"
 
 ## Architecture
 
-The calculator service follows clean architecture principles:
-- **cmd/server**: Application bootstrap and server configuration
-- **internal/handler**: HTTP request handling and routing
-- **internal/service**: Core business logic (arithmetic operations)
-- **internal/models**: Shared data structures
+The calculator service is built with TypeScript and Hono framework:
+- **src/index.ts**: Worker entry point and app configuration
+- **src/routes/**: HTTP request handling with Hono
+- **src/services/**: Core business logic (arithmetic operations)
+- **src/types/**: TypeScript interfaces
 
 The service includes:
-- Graceful shutdown with configurable timeout
-- Request body size limits (1MB)
+- TypeScript with strict type checking
+- Hono framework for fast, lightweight routing
+- Cloudflare Workers for edge deployment
 - Input validation (rejects NaN and Infinity)
-- Comprehensive test coverage
+- Comprehensive test coverage with Vitest
 
 ## Custom Slash Commands
 
-This repo includes three specialized Go agents as custom commands:
+This repo includes three specialized Node/TypeScript agents as custom commands:
 
-- `/project:go-architect` - Reviews API design, concurrency patterns, error handling, and package structure
-- `/project:go-tester` - Generates comprehensive tests with table-driven patterns and HTTP handler tests
-- `/project:go-engineer-reviewer` - Conducts thorough code review across quality, security, and performance
+- `/project:node-architect` - Reviews API design, TypeScript patterns, error handling, and module structure
+- `/project:node-tester` - Generates comprehensive tests with Vitest patterns and HTTP handler tests
+- `/project:node-engineer-reviewer` - Conducts thorough code review across quality, security, and performance
 
 ## Automated CI/CD Agents
 
