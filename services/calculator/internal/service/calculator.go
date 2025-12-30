@@ -9,8 +9,18 @@ var (
 	ErrInvalidInput = errors.New("invalid input: NaN and Infinity not allowed")
 )
 
+// CalculatorService defines the interface for arithmetic operations.
+type CalculatorService interface {
+	Add(a, b float64) (float64, error)
+	Subtract(a, b float64) (float64, error)
+	Multiply(a, b float64) (float64, error)
+}
+
 // Calculator provides arithmetic operations.
 type Calculator struct{}
+
+// Ensure Calculator implements CalculatorService at compile time.
+var _ CalculatorService = (*Calculator)(nil)
 
 // NewCalculator creates a new Calculator instance.
 func NewCalculator() *Calculator {
