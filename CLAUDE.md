@@ -80,18 +80,15 @@ This repo includes three specialized Node/TypeScript agents as custom commands:
 - `/project:node-tester` - Generates comprehensive tests with Vitest patterns and HTTP handler tests
 - `/project:node-engineer-reviewer` - Conducts thorough code review across quality, security, and performance
 
-## Automated CI/CD Agents
+## Automated CI/CD
 
-Python scripts in `scripts/agents/` run as GitHub Actions on PRs:
+GitHub Actions workflow (`.github/workflows/ai-code-review.yml`) automatically runs tests on PRs:
 
 ```bash
-# Install dependencies
-pip install -r scripts/agents/requirements.txt
-
-# Run locally (requires ANTHROPIC_API_KEY)
-python scripts/agents/go_architect.py
-python scripts/agents/go_tester.py
-python scripts/agents/go_engineer_reviewer.py --diff
+# CI runs these commands on each PR
+npm ci
+npm run typecheck
+npm test
 ```
 
-GitHub Actions workflow (`.github/workflows/ai-code-review.yml`) automatically posts review comments on PRs. Requires `ANTHROPIC_API_KEY` secret in repository settings.
+The workflow triggers on changes to `services/calculator/**` files.
