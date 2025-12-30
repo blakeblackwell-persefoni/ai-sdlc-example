@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -289,5 +290,193 @@ func TestHandler_EmptyBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_LargeRequestBody(t *testing.T) {
+	h := setupHandler()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	// Create a request body larger than 1MB limit
+	largeBody := bytes.Repeat([]byte("a"), 2*1024*1024) // 2MB
+	req := httptest.NewRequest(http.MethodPost, "/add", bytes.NewReader(largeBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d for oversized request", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_MalformedJSON(t *testing.T) {
+	h := setupHandler()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"incomplete JSON", `{"a":1`},
+		{"invalid JSON syntax", `{a:1,b:2}`},
+		{"string instead of number", `{"a":"text","b":2}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/add", bytes.NewReader([]byte(tt.body)))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d for malformed JSON", rec.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestHandler_InvalidNumericValues(t *testing.T) {
+	h := setupHandler()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	tests := []struct {
+		name       string
+		endpoint   string
+		body       models.OperationRequest
+		wantStatus int
+		wantError  bool
+	}{
+		{
+			name:       "NaN in add",
+			endpoint:   "/add",
+			body:       models.OperationRequest{A: math.NaN(), B: 5},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+		{
+			name:       "Infinity in subtract",
+			endpoint:   "/subtract",
+			body:       models.OperationRequest{A: math.Inf(1), B: 5},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+		{
+			name:       "Negative infinity in multiply",
+			endpoint:   "/multiply",
+			body:       models.OperationRequest{A: 5, B: math.Inf(-1)},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.body)
+			req := httptest.NewRequest(http.MethodPost, tt.endpoint, bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+
+			if tt.wantError {
+				var errResp models.ErrorResponse
+				json.NewDecoder(rec.Body).Decode(&errResp)
+				if errResp.Error == "" {
+					t.Error("expected error message, got empty string")
+				}
+			}
+		})
+	}
+}
+
+func TestHandler_EdgeCaseNumbers(t *testing.T) {
+	h := setupHandler()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	tests := []struct {
+		name       string
+		endpoint   string
+		body       models.OperationRequest
+		wantStatus int
+		wantResult float64
+	}{
+		{
+			name:       "very large numbers addition",
+			endpoint:   "/add",
+			body:       models.OperationRequest{A: 1e307, B: 1e307},
+			wantStatus: http.StatusOK,
+			wantResult: 2e307,
+		},
+		{
+			name:       "very small numbers multiplication",
+			endpoint:   "/multiply",
+			body:       models.OperationRequest{A: 1e-308, B: 1e-308},
+			wantStatus: http.StatusOK,
+			wantResult: 0, // underflow to zero
+		},
+		{
+			name:       "negative zero",
+			endpoint:   "/add",
+			body:       models.OperationRequest{A: -0.0, B: 0.0},
+			wantStatus: http.StatusOK,
+			wantResult: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.body)
+			req := httptest.NewRequest(http.MethodPost, tt.endpoint, bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+
+			var resp models.OperationResponse
+			json.NewDecoder(rec.Body).Decode(&resp)
+			if resp.Result != tt.wantResult {
+				t.Errorf("result = %v, want %v", resp.Result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestHandler_AllEndpointsMethodValidation(t *testing.T) {
+	h := setupHandler()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	endpoints := []string{"/add", "/subtract", "/multiply"}
+	methods := []string{http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodPatch}
+
+	for _, endpoint := range endpoints {
+		for _, method := range methods {
+			t.Run(endpoint+"_"+method, func(t *testing.T) {
+				req := httptest.NewRequest(method, endpoint, nil)
+				rec := httptest.NewRecorder()
+
+				mux.ServeHTTP(rec, req)
+
+				if rec.Code != http.StatusMethodNotAllowed {
+					t.Errorf("endpoint %s with method %s: status = %d, want %d",
+						endpoint, method, rec.Code, http.StatusMethodNotAllowed)
+				}
+			})
+		}
 	}
 }
