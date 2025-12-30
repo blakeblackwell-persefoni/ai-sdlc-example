@@ -1,26 +1,38 @@
-name: Go Tests
+name: Calculator Tests
 
 on:
   pull_request:
     types: [opened, synchronize]
     paths:
-      - '**.go'
+      - 'services/calculator/**'
 
 jobs:
   test:
-    name: Run Go Tests
+    name: Run Calculator Tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.21'
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/calculator/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd services/calculator
+          npm ci
+
+      - name: Run type check
+        run: |
+          cd services/calculator
+          npm run typecheck
 
       - name: Run tests
         run: |
           cd services/calculator
-          go test ./... -v
+          npm test

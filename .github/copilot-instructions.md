@@ -1,7 +1,7 @@
 # AI Coding Agent Instructions
 
 ## Project Overview
-This is an experimental **Agentic SDLC** repository exploring AI-driven software development. The codebase implements a microservices-based calculator API in Go, serving as a testbed for AI-first development workflows.
+This is an experimental **Agentic SDLC** repository exploring AI-driven software development. The codebase implements a microservices-based calculator API in TypeScript for Cloudflare Workers, serving as a testbed for AI-first development workflows.
 
 ## Architecture Patterns
 
@@ -9,83 +9,119 @@ This is an experimental **Agentic SDLC** repository exploring AI-driven software
 Follow the established clean architecture pattern:
 ```
 services/{service-name}/
-├── cmd/server/main.go          # Application entry point with graceful shutdown
-├── internal/
-│   ├── handler/                # HTTP request handling and routing
-│   ├── models/                 # Request/response types with JSON tags
-│   └── service/                # Business logic with input validation
-├── go.mod                      # Minimal dependencies (Go 1.21+)
-├── openapi.yaml                # API contract definition
-└── README.md                   # Service documentation
+├── src/
+│   ├── index.ts              # Worker entry point
+│   ├── routes/               # HTTP request handling with Hono
+│   ├── services/             # Business logic with input validation
+│   └── types/                # TypeScript interfaces
+├── test/
+│   ├── routes/               # HTTP integration tests
+│   └── services/             # Unit tests
+├── wrangler.toml             # Cloudflare Workers config
+├── package.json              # Dependencies and scripts
+├── tsconfig.json             # TypeScript configuration
+├── vitest.config.ts          # Test runner config
+├── openapi.yaml              # API contract definition
+└── README.md                 # Service documentation
 ```
 
 **Key conventions:**
-- Use `internal/` packages for private APIs
-- Dependency injection: `service.NewCalculator()` → `handler.NewHandler(calc)`
-- Generic handler pattern: `handleOperation` function reduces duplication across endpoints
+- Use separate directories for routes, services, and types
+- Dependency injection: services imported into route handlers
+- Type guards for runtime validation of request bodies
 
-### HTTP Server Setup
-```go
-server := &http.Server{
-    Addr:         ":8080",
-    Handler:      mux,
-    ReadTimeout:  5 * time.Second,
-    WriteTimeout: 10 * time.Second,
-    IdleTimeout:  120 * time.Second,
-}
+### HTTP Server Setup (Hono + Cloudflare Workers)
+```typescript
+import { Hono } from "hono";
+import { calculator } from "./routes/calculator";
+
+const app = new Hono();
+app.route("/", calculator);
+
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+app.onError((err, c) => c.json({ error: "Internal server error" }, 500));
+
+export default app;
 ```
-- Graceful shutdown with 30-second timeout
-- Request body size limit: 1MB
-- Method validation and proper HTTP status codes
+- Hono framework for lightweight, fast routing
+- Edge deployment on Cloudflare Workers
+- Proper error handling with consistent JSON responses
 
 ## Testing Patterns
 
-### Table-Driven Unit Tests
-```go
-tests := []struct {
-    name    string
-    a, b    float64
-    want    float64
-    wantErr bool
-}{
-    {"positive numbers", 10, 5, 15, false},
-    {"NaN input", math.NaN(), 5, 0, true},
-}
-for _, tt := range tests {
-    t.Run(tt.name, func(t *testing.T) { /* test logic */ })
-}
+### Table-Driven Unit Tests (Vitest)
+```typescript
+describe("add", () => {
+  it.each([
+    { a: 10, b: 5, expected: 15, name: "positive numbers" },
+    { a: -10, b: -5, expected: -15, name: "negative numbers" },
+    { a: 0, b: 0, expected: 0, name: "zeros" },
+  ])("$name: add($a, $b) = $expected", ({ a, b, expected }) => {
+    expect(add(a, b)).toBe(expected);
+  });
+
+  it("throws InvalidInputError for NaN", () => {
+    expect(() => add(NaN, 5)).toThrow(InvalidInputError);
+  });
+});
 ```
 - Comprehensive edge case coverage (NaN, Infinity validation)
-- Use `math.IsNaN()` and `math.IsInf()` for input validation
+- Use `Number.isFinite()` for input validation
 
 ### HTTP Handler Tests
-```go
-req := httptest.NewRequest(http.MethodPost, "/add", bytes.NewReader(body))
-rec := httptest.NewRecorder()
-mux.ServeHTTP(rec, req)
-// Assert status codes and JSON responses
+```typescript
+async function makeRequest(path: string, options?: RequestInit) {
+  const request = new Request(`http://localhost${path}`, options);
+  return app.fetch(request);
+}
+
+describe("POST /add", () => {
+  it("returns correct sum for valid inputs", async () => {
+    const response = await makeRequest("/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ a: 10, b: 5 }),
+    });
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).toEqual({ result: 15 });
+  });
+});
 ```
 - Test both success and error responses
-- Validate JSON marshaling/unmarshaling
+- Validate HTTP status codes and JSON responses
 
 ## API Design Principles
 
 ### Request/Response Models
-```go
-type OperationRequest struct {
-    A float64 `json:"a"`
-    B float64 `json:"b"`
+```typescript
+export interface OperationRequest {
+  a: number;
+  b: number;
 }
 
-type OperationResponse struct {
-    Result float64 `json:"result"`
+export interface OperationResponse {
+  result: number;
 }
 
-type ErrorResponse struct {
-    Error string `json:"error"`
+export interface ErrorResponse {
+  error: string;
+}
+
+export function isOperationRequest(obj: unknown): obj is OperationRequest {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "a" in obj &&
+    "b" in obj &&
+    typeof (obj as OperationRequest).a === "number" &&
+    typeof (obj as OperationRequest).b === "number"
+  );
 }
 ```
 - Consistent JSON field naming
+- Type guards for runtime validation
 - Separate error response type
 
 ### Endpoint Patterns
@@ -98,38 +134,55 @@ type ErrorResponse struct {
 
 ### Build Commands
 ```bash
-# Run service
-cd services/calculator && go run cmd/server/main.go
+# Install dependencies
+cd services/calculator && npm install
 
-# Test with coverage
-go test ./... -cover
+# Start local development server (port 8787)
+npm run dev
 
-# Build binary
-go build -o calculator cmd/server/main.go
+# Run tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Type check
+npm run typecheck
+
+# Deploy to Cloudflare Workers
+npm run deploy
 ```
 
 ### AI Agent Integration
-- Python agents in `scripts/agents/` provide automated code review
-- Requires `ANTHROPIC_API_KEY` for CI/CD automation
-- Agents review: architecture, testing, code quality
-- GitHub Actions workflow posts review comments on PRs
+- Custom Claude commands in `.claude/commands/` provide specialized reviews
+- Node-focused agents: node-architect, node-tester, node-engineer-reviewer
+- GitHub Actions workflow runs tests on PRs
 
 ## Code Quality Standards
 
 ### Error Handling
-- Custom error types: `ErrInvalidInput`
-- Proper error wrapping and propagation
+```typescript
+export class InvalidInputError extends Error {
+  constructor(message: string = "invalid input: NaN and Infinity not allowed") {
+    super(message);
+    this.name = "InvalidInputError";
+  }
+}
+```
+- Custom error classes with proper inheritance
 - HTTP handlers return appropriate status codes
+- Consistent error response format
 
 ### Security & Validation
 - Input validation in service layer (not just handlers)
-- Request body size limits
+- Type guards for runtime type checking
 - Reject invalid numeric inputs (NaN, Infinity)
 
-### Performance
-- Minimal allocations in hot paths
-- Reasonable timeouts and limits
-- Clean separation of concerns for maintainability
+### TypeScript Best Practices
+- Strict mode enabled
+- No implicit any
+- Proper type imports (`import type`)
+- Interface-first design
 
 ## Agentic Development Guidelines
 
@@ -140,5 +193,4 @@ This project embraces AI-driven development:
 - Follow established naming and structure conventions
 - Prioritize code readability and maintainability
 
-Reference files: [services/calculator/internal/service/calculator.go](services/calculator/internal/service/calculator.go), [services/calculator/internal/handler/handler.go](services/calculator/internal/handler/handler.go), [services/calculator/openapi.yaml](services/calculator/openapi.yaml)</content>
-<parameter name="filePath">/workspaces/ai-sdlc-example/.github/copilot-instructions.md
+Reference files: [services/calculator/src/services/calculator.ts](services/calculator/src/services/calculator.ts), [services/calculator/src/routes/calculator.ts](services/calculator/src/routes/calculator.ts), [services/calculator/openapi.yaml](services/calculator/openapi.yaml)
